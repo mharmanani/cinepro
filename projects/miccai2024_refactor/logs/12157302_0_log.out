@@ -1,0 +1,131 @@
+submitit INFO (2024-03-14 16:29:27,290) - Starting with JobEnvironment(job_id=12157302, hostname=gpu035, local_rank=0(1), node=0(1), global_rank=0(1))
+submitit INFO (2024-03-14 16:29:27,291) - Loading pickle: /fs01/home/harmanan/medAI/projects/miccai2024_refactor/logs/12157302_submitted.pkl
+2024-03-14 16:29:56,675 INFO Setting up experiment
+2024-03-14 16:29:56,676 INFO Running in directory: /checkpoint/harmanan/12157302
+wandb: Currently logged in as: mharmanani. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.16.4
+wandb: Run data is saved locally in /fs01/home/harmanan/medAI/projects/miccai2024_refactor/wandb/run-20240314_162957-12157302
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run peanut-butter-mousse-1
+wandb: ⭐️ View project at https://wandb.ai/mharmanani/miccai2024_repro
+wandb: 🚀 View run at https://wandb.ai/mharmanani/miccai2024_repro/runs/12157302
+2024-03-14 16:30:14,247 INFO Wandb initialized
+2024-03-14 16:30:14,249 INFO Wandb url: https://wandb.ai/mharmanani/miccai2024_repro/runs/12157302
+2024-03-14 16:30:14,250 INFO No experiment state found - starting from scratch
+2024-03-14 16:30:14,250 INFO Setting global seed to 42
+2024-03-14 16:30:14,257 INFO Setting up data
+2024-03-14 16:30:14,262 INFO Using test center UVA
+Loading dataset:   0%|          | 0/2037 [00:00<?, ?it/s]Loading dataset: 100%|██████████| 2037/2037 [00:00<00:00, 1488207.15it/s]
+Loading dataset:   0%|          | 0/887 [00:00<?, ?it/s]Loading dataset: 100%|██████████| 887/887 [00:00<00:00, 1712078.99it/s]
+Loading dataset:   0%|          | 0/2335 [00:00<?, ?it/s]Loading dataset: 100%|██████████| 2335/2335 [00:00<00:00, 2020152.61it/s]
+2024-03-14 16:30:14,656 INFO Number of training batches: 510
+2024-03-14 16:30:14,657 INFO Number of validation batches: 222
+2024-03-14 16:30:14,657 INFO Number of test batches: 584
+2024-03-14 16:30:14,657 INFO Number of training samples: 2037
+2024-03-14 16:30:14,657 INFO Number of validation samples: 887
+2024-03-14 16:30:14,657 INFO Number of test samples: 2335
+wandb: WARNING Saving files without folders. If you want to preserve sub directories pass base_path to wandb.save, i.e. wandb.save("/mnt/folder/file.h5", base_path="/mnt")
+2024-03-14 16:30:14,911 INFO Setting up model
+submitit ERROR (2024-03-14 16:30:16,790) - Submitted job triggered an exception
+submitit ERROR (2024-03-14 16:30:16,790) - Submitted job triggered an exception
+2024-03-14 16:30:16,790 ERROR Submitted job triggered an exception
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/submitit/core/_submit.py", line 11, in <module>
+    submitit_main()
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/submitit/core/submission.py", line 76, in submitit_main
+    process_job(args.folder)
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/submitit/core/submission.py", line 69, in process_job
+    raise error
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/submitit/core/submission.py", line 55, in process_job
+    result = delayed.result()
+             ^^^^^^^^^^^^^^^^
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/submitit/core/utils.py", line 133, in result
+    self._result = self.function(*self.args, **self.kwargs)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/fs01/home/harmanan/medAI/projects/miccai2024_refactor/run.py", line 81, in __call__
+    experiment.run()
+  File "/fs01/home/harmanan/medAI/projects/miccai2024_refactor/train_prostnfound.py", line 419, in run
+    self.setup()
+  File "/fs01/home/harmanan/medAI/projects/miccai2024_refactor/train_prostnfound.py", line 214, in setup
+    self.setup_model()
+  File "/fs01/home/harmanan/medAI/projects/miccai2024_refactor/train_prostnfound.py", line 238, in setup_model
+    self.model = ProstNFound(self.config.model)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/fs01/home/harmanan/medAI/projects/miccai2024_refactor/src/prostnfound.py", line 213, in __init__
+    from timm.models.resnet import resnet10t
+ModuleNotFoundError: No module named 'timm'
+wandb: - 0.071 MB of 0.071 MB uploadedwandb: WARNING No program path found, not creating job artifact. See https://docs.wandb.ai/guides/launch/create-job
+wandb: \ 0.071 MB of 0.071 MB uploadedwandb: | 0.071 MB of 0.078 MB uploadedwandb: 🚀 View run peanut-butter-mousse-1 at: https://wandb.ai/mharmanani/miccai2024_repro/runs/12157302
+wandb: Synced 6 W&B file(s), 0 media file(s), 0 artifact file(s) and 3 other file(s)
+wandb: Find logs at: ./wandb/run-20240314_162957-12157302/logs
+Exception in thread NetStatThr:
+Traceback (most recent call last):
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/threading.py", line 1045, in _bootstrap_inner
+Exception in thread IntMsgThr:
+Traceback (most recent call last):
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/threading.py", line 1045, in _bootstrap_inner
+    self.run()
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/threading.py", line 982, in run
+    self.run()
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/wandb_run.py", line 268, in check_network_status
+    self._target(*self._args, **self._kwargs)
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/wandb_run.py", line 300, in check_internal_messages
+    self._loop_check_status(
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/wandb_run.py", line 224, in _loop_check_status
+    self._loop_check_status(
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/wandb_run.py", line 224, in _loop_check_status
+    local_handle = request()
+     local_handle = request() 
+                                  ^ ^ ^^^^^^^^^^^^^^
+^  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/interface/interface.py", line 795, in deliver_network_status
+^
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/interface/interface.py", line 803, in deliver_internal_messages
+    return self._deliver_network_status(status)
+     return self._deliver_internal_messages(internal_message) 
+                  ^ ^ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/interface/interface_shared.py", line 500, in _deliver_network_status
+^^^^^^^^^^^^    ^return self._deliver_record(record)^
+
+   File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/interface/interface_shared.py", line 506, in _deliver_internal_messages
+            return self._deliver_record(record) 
+  ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/interface/interface_shared.py", line 449, in _deliver_record
+^^^^^^^^    ^handle = mailbox._deliver_record(record, interface=self)
+
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/interface/interface_shared.py", line 449, in _deliver_record
+            handle = mailbox._deliver_record(record, interface=self) 
+        ^ ^ ^ ^ ^ ^ ^ ^ ^ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/lib/mailbox.py", line 455, in _deliver_record
+^^^^^^^^
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/lib/mailbox.py", line 455, in _deliver_record
+    interface._publish(record)
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/interface/interface_sock.py", line 51, in _publish
+    interface._publish(record)
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/interface/interface_sock.py", line 51, in _publish
+    self._sock_client.send_record_publish(record)    
+self._sock_client.send_record_publish(record)  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/lib/sock_client.py", line 221, in send_record_publish
+
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/lib/sock_client.py", line 221, in send_record_publish
+    self.send_server_request(server_req)
+      File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/lib/sock_client.py", line 155, in send_server_request
+self.send_server_request(server_req)
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/lib/sock_client.py", line 155, in send_server_request
+    self._send_message(msg)    
+self._send_message(msg)  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/lib/sock_client.py", line 152, in _send_message
+
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/lib/sock_client.py", line 152, in _send_message
+    self._sendall_with_error_handle(header + data)    
+self._sendall_with_error_handle(header + data)  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/lib/sock_client.py", line 130, in _sendall_with_error_handle
+
+  File "/h/harmanan/anaconda3/envs/medai/lib/python3.11/site-packages/wandb/sdk/lib/sock_client.py", line 130, in _sendall_with_error_handle
+    sent = self._sock.send(data)    
+sent = self._sock.send(data) 
+                    ^ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^BrokenPipeError
+: BrokenPipeError[Errno 32] Broken pipe: 
+[Errno 32] Broken pipe
+srun: error: gpu035: task 0: Exited with exit code 1
