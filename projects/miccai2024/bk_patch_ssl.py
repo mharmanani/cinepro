@@ -45,6 +45,7 @@ def parse_args():
     group.add_argument("--batch_size", type=int, default=32)
     group.add_argument("--full_prostate", action="store_true", default=False)
     group.add_argument("--inv_threshold", type=float, default=0.4)
+    group.add_argument("--backbone", type=str, default="resnet18")
 
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--lr", type=float, default=1e-3)
@@ -77,8 +78,9 @@ def main(args):
     ssl_loader, _, _ = make_bk_dataloaders(self_supervised=True, inv_threshold=args.inv_threshold)
     train_loader, val_loader, test_loader = make_bk_dataloaders(self_supervised=False, inv_threshold=args.inv_threshold)
 
-    backbone = resnet50_instance_norm()
-    model = VICReg(backbone, proj_dims=[512, 512, 2048], features_dim=512).to(DEVICE)
+    backbone = load_backbone(args.backbone)
+    model = VICReg(backbone, proj_dims=[512, 512, 2048], \
+                   features_dim=get_vicreg_dimensions(args.backbone)).to(DEVICE)
     if state is not None:
         model.load_state_dict(state["model"])
 
@@ -180,8 +182,12 @@ def main(args):
         score = roc_auc_score(y_true_core, y_pred_core)
 
         high_involvement_table = table[
-            (table.inv > 0.4) | (table.y == 0)
+            (table.inv >= 0.4) | (table.y == 0)
         ]
+
+        table.to_csv("/fs01/home/harmanan/medAI/table.csv")
+        high_involvement_table.to_csv("/fs01/home/harmanan/medAI/high_involvement_table.csv")
+
         y_true_high_involvement = high_involvement_table.groupby("core_id")[
             "y"
         ].first()
@@ -219,6 +225,22 @@ def resnet50_instance_norm():
     model = resnet50()
     model.fc = nn.Identity()
     return nn.Sequential(nn.InstanceNorm2d(3), model)
+
+def load_backbone(backbone_name):
+    if backbone_name == "resnet32":
+        return resnet32_instance_norm()
+    if backbone_name == "resnet18":
+        return resnet18_instance_norm()
+    if backbone_name == "resnet50":
+        return resnet50_instance_norm()
+    raise ValueError(f"Unknown backbone {backbone_name}")
+
+def get_vicreg_dimensions(backbone_name):
+    if backbone_name == "resnet18":
+        return 512
+    if backbone_name == "resnet50":
+        return 2048
+    raise ValueError(f"Unknown backbone {backbone_name}")
 
 if __name__ == "__main__":
     args = parse_args()

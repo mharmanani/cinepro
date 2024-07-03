@@ -1,4 +1,4 @@
-from train_prostnfound import *
+from train_bkfound import *
 import submitit
 import os
 
@@ -7,27 +7,19 @@ DEBUG=False
 TEST_CENTER = "UVA"
 VAL_SEED=0
 
-data_cfg = BModeDataFactoryV1Config(
-    test_center=TEST_CENTER,
-    undersample_benign_ratio=6,
-    remove_benign_cores_from_positive_patients=True,
-    batch_size=4,
-)
+data_cfg = BK_DataFactoryV1Config(batch_size=1)
 
-model_cfg = ProstNFoundConfig(
-    prompts=[
-        PromptOptions.age,
-        PromptOptions.approx_psa_density,
-        PromptOptions.psa,
-        PromptOptions.sparse_cnn_patch_features_rf
-    ],
+model_cfg = BKFoundConfig(
+    prompts=[],
     sam_backbone=BackboneOptions.medsam,
-    sparse_cnn_backbone_path=f"/ssd005/projects/exactvu_pca/checkpoint_store/miccai2024_ProFound_PatchSSLWeights/{TEST_CENTER}_patch_ssl_rf{VAL_SEED}.pth", 
+    #sparse_cnn_backbone_path=None,
+    sparse_cnn_backbone_path=f"/h/harmanan/medAI/ckpt/bk_patch_ssl_12752997.pth",
+    #sparse_cnn_backbone_path=f"/ssd005/projects/exactvu_pca/checkpoint_store/miccai2024_ProFound_PatchSSLWeights/{TEST_CENTER}_patch_ssl_rf{VAL_SEED}.pth", 
     pool_patch_features='max', 
     pos_embed_cnn_patch=False,    
 )
 
-wandb_config = WandbConfig(project='miccai2024_repro', name="debug" if DEBUG else None)
+wandb_config = WandbConfig(project='BK-Found', name="debug" if DEBUG else None)
 
 loss_config = CancerDetectionValidRegionLossConfig(loss_pos_weight=2)
 
@@ -98,7 +90,7 @@ if not DEBUG:
         cpus_per_task=16,
         slurm_qos='m2', 
         stderr_to_stdout=True,
-        slurm_name='ProstNFound'
+        slurm_name='BK_Found'
     )
 
     job = executor.submit(Main(args))

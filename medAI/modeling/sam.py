@@ -64,6 +64,16 @@ def build_adapter_medsam_256():
     freeze_non_adapter_layers(model.image_encoder)
     return model
 
+def build_adapter_medsam_224():
+    checkpoint = os.path.join(CHECKPOINT_DIR, "medsam_vit_b_cpu.pth")
+    model = sam_model_registry["vit_b"](checkpoint=checkpoint)
+
+    model.image_encoder = wrap_image_encoder_with_adapter(
+        model.image_encoder, adapter_dim=224
+    )
+    freeze_non_adapter_layers(model.image_encoder)
+    return model
+
 
 def build_adapter_sammed_2d():
     model = build_sammed_2d()

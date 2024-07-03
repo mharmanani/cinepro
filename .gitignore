@@ -7,3 +7,5 @@ wandb
 wandb/*
 
 *.png
+
+*.pyc

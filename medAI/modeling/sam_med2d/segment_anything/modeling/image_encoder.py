@@ -70,7 +70,7 @@ class ImageEncoderViT(nn.Module):
         qkv_bias: bool = True,
         norm_layer: Type[nn.Module] = nn.LayerNorm,
         act_layer: Type[nn.Module] = nn.GELU,
-        use_abs_pos: bool = True,
+        use_abs_pos: bool = False,
         use_rel_pos: bool = False,
         rel_pos_zero_init: bool = True,
         window_size: int = 0,

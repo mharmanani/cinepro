@@ -8,10 +8,13 @@ import torch.nn as nn
 import wandb
 from einops import rearrange, repeat
 from matplotlib import pyplot as plt
-from src.data_factory import BModeDataFactoryV1, BModeDataFactoryV1Config
+
+from medAI.datasets.data_bk import make_corewise_bk_dataloaders
+
+from src.bk_data_factory import BK_DataFactoryV1, BK_DataFactoryV1Config
 from src.bkfound import (
-    ProstNFound,
-    ProstNFoundConfig,
+    BKFound,
+    BKFoundConfig,
     BackboneOptions,
     PromptOptions,
 )
@@ -32,7 +35,7 @@ class WandbConfig(BaseModel):
     project: str = "BKFound"
     group: tp.Optional[str] = None
     name: tp.Optional[str] = None
-    log_images: bool = False
+    log_images: bool = True
     tags: tp.List[str] = []
 
 
@@ -51,7 +54,7 @@ class CancerDetectionValidRegionLossConfig(BaseModel):
             when selecting the pixels to apply the loss to
     """
 
-    base_loss: str = "ce"
+    base_loss: str = "ce_mae"
     loss_pos_weight: float = 1.0
     prostate_mask: bool = True
     needle_mask: bool = True
@@ -115,7 +118,7 @@ class Args(BaseModel):
     """
 
     wandb: WandbConfig = WandbConfig()
-    data: BModeDataFactoryV1Config = BModeDataFactoryV1Config(
+    data: BK_DataFactoryV1Config = BK_DataFactoryV1Config(
         test_center="UVA",
         min_involvement_train=40,
         batch_size=1,
@@ -126,7 +129,7 @@ class Args(BaseModel):
         train_subset_seed=42,
         rf_as_bmode=False,
     )
-    model: ProstNFoundConfig = ProstNFoundConfig()
+    model: BKFoundConfig = BKFoundConfig()
     optimizer: OptimizerConfig = OptimizerConfig()
     losses: tp.List[CancerDetectionValidRegionLossConfig] = [
         CancerDetectionValidRegionLossConfig()
@@ -235,7 +238,7 @@ class Experiment:
     def setup_model(self):
         logging.info("Setting up model")
 
-        self.model = ProstNFound(self.config.model)
+        self.model = BKFound(self.config.model)
 
         self.model.to(self.config.device)
         torch.compile(self.model)
@@ -360,32 +363,22 @@ class Experiment:
             data_config.limit_train_data if data_config.limit_train_data < 1 else None
         )
 
-        data_factory = BModeDataFactoryV1(data_config)
-        self.train_loader = data_factory.train_loader()
-        self.val_loader = data_factory.val_loader()
-        self.test_loader = data_factory.test_loader()
+        logging.info(f"Data config: {data_config}")
+        logging.info(f"Batch size: {data_config.batch_size}")
+
+        print("Loading data")
+        print(f"Data config: {data_config}")
+        print(f"Batch size: {data_config.batch_size}")
+
+        self.train_loader, self.val_loader, self.test_loader = \
+            make_corewise_bk_dataloaders(batch_sz=data_config.batch_size, im_sz=1024, style='last_frame')
+        
         logging.info(f"Number of training batches: {len(self.train_loader)}")
         logging.info(f"Number of validation batches: {len(self.val_loader)}")
         logging.info(f"Number of test batches: {len(self.test_loader)}")
         logging.info(f"Number of training samples: {len(self.train_loader.dataset)}")
         logging.info(f"Number of validation samples: {len(self.val_loader.dataset)}")
         logging.info(f"Number of test samples: {len(self.test_loader.dataset)}")
-
-        # dump core_ids to file
-        train_core_ids = self.train_loader.dataset.core_ids
-        val_core_ids = self.val_loader.dataset.core_ids
-        test_core_ids = self.test_loader.dataset.core_ids
-
-        with open(os.path.join(self.config.exp_dir, "train_core_ids.txt"), "w") as f:
-            f.write("\n".join(train_core_ids))
-        with open(os.path.join(self.config.exp_dir, "val_core_ids.txt"), "w") as f:
-            f.write("\n".join(val_core_ids))
-        with open(os.path.join(self.config.exp_dir, "test_core_ids.txt"), "w") as f:
-            f.write("\n".join(test_core_ids))
-
-        wandb.save(os.path.join(self.config.exp_dir, "train_core_ids.txt"))
-        wandb.save(os.path.join(self.config.exp_dir, "val_core_ids.txt"))
-        wandb.save(os.path.join(self.config.exp_dir, "test_core_ids.txt"))
 
         if self.config.custom_prompt_table_path is not None:
             print("Loading custom prompt table")
@@ -468,28 +461,42 @@ class Experiment:
                 break
 
             # extracting relevant data from the batch
-            bmode = batch.pop("bmode").to(self.config.device)
-            needle_mask = batch.pop("needle_mask").to(self.config.device)
-            prostate_mask = batch.pop("prostate_mask").to(self.config.device)
+            bmode, needle_mask, prostate_mask, label, *metadata = batch
+            
+            bmode = bmode.unsqueeze(1)
+            prostate_mask = prostate_mask.unsqueeze(1)
+            needle_mask = needle_mask.unsqueeze(1)
+            
+            bmode = torch.cat([bmode, bmode, bmode], dim=1)
+            bmode = bmode.to(self.config.device)
+            needle_mask = needle_mask.to(self.config.device)
+            prostate_mask = prostate_mask.to(self.config.device)
+            label = label.to(self.config.device)
+            
+            involvement = metadata[0]
+            involvement = involvement.to(self.config.device)
 
-            psa = batch["psa"].to(self.config.device)
-            age = batch["age"].to(self.config.device)
-            label = batch["label"].to(self.config.device)
-            involvement = batch["involvement"].to(self.config.device)
-            family_history = batch["family_history"].to(self.config.device)
-            anatomical_location = batch["loc"].to(self.config.device)
-            approx_psa_density = batch["approx_psa_density"].to(self.config.device)
-
-            core_ids = batch["core_id"]
-            if self.config.custom_prompt_table_path is not None:
-                custom_prompts = self.get_custom_prompts(core_ids)
+            core_ids = metadata[1]
+            patient_ids = metadata[2]
+            if self.config.custom_prompt_table_path:
+                pass # TODO: implement self.get_custom_prompts(core_ids) later 
             else:
                 custom_prompts = None
 
-            if "rf" in batch:
-                rf = batch.pop("rf").to(self.config.device)
-            else:
-                rf = None
+            # OLD
+            #psa = batch["psa"].to(self.config.device)
+            #age = batch["age"].to(self.config.device)
+            #label = batch["label"].to(self.config.device)
+            #involvement = batch["involvement"].to(self.config.device)
+            #family_history = batch["family_history"].to(self.config.device)
+            #anatomical_location = batch["loc"].to(self.config.device)
+            #approx_psa_density = batch["approx_psa_density"].to(self.config.device)
+
+            # core_ids = batch["core_id"] # NEEDS REWRITE
+            # if self.config.custom_prompt_table_path is not None:
+            #     custom_prompts = 
+            # else:
+            #     custom_prompts = None
 
             B = len(bmode)
             task_id = torch.zeros(B, dtype=torch.long, device=bmode.device)
@@ -500,15 +507,9 @@ class Experiment:
                 heatmap_logits = self.model(
                     bmode,
                     task_id=task_id,
-                    anatomical_location=anatomical_location,
-                    psa=psa,
-                    age=age,
-                    family_history=family_history,
                     prostate_mask=prostate_mask,
                     needle_mask=needle_mask,
-                    approx_psa_density=approx_psa_density,
-                    rf_image=rf,
-                    custom=custom_prompts,
+                    # rf_image=rf, SSL+VICReg next
                 )
 
                 if torch.any(torch.isnan(heatmap_logits)):
@@ -578,7 +579,10 @@ class Experiment:
                 {
                     "average_needle_heatmap_value": mean_predictions_in_needle,
                     "average_prostate_heatmap_value": mean_predictions_in_prostate,
-                    **batch,
+                    "involvement": involvement,
+                    "patient_id": patient_ids,
+                    "core_id": core_ids,
+                    "label": label,
                 }
             )
 
@@ -596,15 +600,19 @@ class Experiment:
             wandb.log(step_metrics)
 
             # log images
-            if train_iter % 100 == 0 and self.config.wandb.log_images:
-                self.show_example(batch_for_image_generation)
-                wandb.log({f"{desc}_example": wandb.Image(plt)})
+            if train_iter % 5 == 0 and self.config.wandb.log_images:
+                wandb_im = self.show_example(batch_for_image_generation)
+                wandb.log({f"{desc}_example": wandb_im})
                 plt.close()
 
         # compute and log metrics
         results_table = accumulator.compute()
         # results_table.to_csv(os.path.join(self.config.exp_dir, f"{desc}_epoch_{self.epoch}_results.csv"))
         # wandb.save(os.path.join(self.config.exp_dir, f"{desc}_epoch_{self.epoch}_results.csv"))
+
+        print(results_table.shape)
+        print(results_table.head())
+
         return self.create_and_report_metrics(results_table, desc="train")
 
     @torch.no_grad()
@@ -619,42 +627,51 @@ class Experiment:
             batch_for_image_generation = (
                 batch.copy()
             )  # we pop some keys from batch, so we keep a copy for image generation
-            bmode = batch.pop("bmode").to(self.config.device)
-            needle_mask = batch.pop("needle_mask").to(self.config.device)
-            prostate_mask = batch.pop("prostate_mask").to(self.config.device)
+            
+            # extracting relevant data from the batch
+            bmode, needle_mask, prostate_mask, label, *metadata = batch
+            
+            bmode = bmode.unsqueeze(1)
+            prostate_mask = prostate_mask.unsqueeze(1)
+            needle_mask = needle_mask.unsqueeze(1)
 
-            psa = batch["psa"].to(self.config.device)
-            age = batch["age"].to(self.config.device)
-            family_history = batch["family_history"].to(self.config.device)
-            anatomical_location = batch["loc"].to(self.config.device)
-            B = len(bmode)
-            task_id = torch.zeros(B, dtype=torch.long, device=bmode.device)
-            approx_psa_density = batch["approx_psa_density"].to(self.config.device)
+            bmode = torch.cat([bmode, bmode, bmode], dim=1)
+            bmode = bmode.to(self.config.device)
+            needle_mask = needle_mask.to(self.config.device)
+            prostate_mask = prostate_mask.to(self.config.device)
+            label = label.to(self.config.device)
+            
+            involvement = metadata[0]
+            involvement = involvement.to(self.config.device)
 
-            core_ids = batch["core_id"]
-            if self.config.custom_prompt_table_path is not None:
-                custom_prompts = self.get_custom_prompts(core_ids)
+            core_ids = metadata[1]
+            patient_ids = metadata[2]
+            if self.config.custom_prompt_table_path:
+                pass # TODO: implement self.get_custom_prompts(core_ids) later 
             else:
                 custom_prompts = None
 
-            if "rf" in batch:
-                rf = batch.pop("rf").to(self.config.device)
-            else:
-                rf = None
+            #psa = batch["psa"].to(self.config.device)
+            #age = batch["age"].to(self.config.device)
+            #family_history = batch["family_history"].to(self.config.device)
+            #anatomical_location = batch["loc"].to(self.config.device)
+            
+            B = len(bmode)
+            task_id = torch.zeros(B, dtype=torch.long, device=bmode.device)
+            #approx_psa_density = batch["approx_psa_density"].to(self.config.device)
+
+            #if "rf" in batch:
+            #    rf = batch.pop("rf").to(self.config.device)
+            #else:
+            #    rf = None
 
             with torch.cuda.amp.autocast(enabled=self.config.use_amp):
                 heatmap_logits = self.model(
                     bmode,
                     task_id=task_id,
-                    anatomical_location=anatomical_location,
-                    psa=psa,
-                    age=age,
-                    family_history=family_history,
                     prostate_mask=prostate_mask,
                     needle_mask=needle_mask,
-                    approx_psa_density=approx_psa_density,
-                    rf_image=rf,
-                    custom=custom_prompts,
+                    # rf_image=rf, SSL+VICReg
                 )
 
                 # compute predictions
@@ -678,16 +695,19 @@ class Experiment:
                     )
                 mean_predictions_in_prostate = torch.stack(mean_predictions_in_prostate)
 
-            if train_iter % 100 == 0 and self.config.wandb.log_images:
-                self.show_example(batch_for_image_generation)
-                wandb.log({f"{desc}_example": wandb.Image(plt)})
+            if train_iter % 5 == 0 and self.config.wandb.log_images:
+                wandb_im = self.show_example(batch_for_image_generation)
+                wandb.log({f"{desc}_example": wandb_im})
                 plt.close()
 
             accumulator(
                 {
                     "average_needle_heatmap_value": mean_predictions_in_needle,
                     "average_prostate_heatmap_value": mean_predictions_in_prostate,
-                    **batch,
+                    "involvement": involvement,
+                    "patient_id": patient_ids,
+                    "core_id": core_ids,
+                    "label": label,
                 }
             )
 
@@ -697,6 +717,10 @@ class Experiment:
 
     def create_and_report_metrics(self, results_table, desc="eval"):
         from src.utils import calculate_metrics
+
+        print(results_table.shape)
+        print(results_table.head())
+        print(results_table.columns)
 
         # core predictions
         predictions = results_table.average_needle_heatmap_value.values
@@ -729,21 +753,21 @@ class Experiment:
                 }
             )
 
-        # patient predictions
-        predictions = (
-            results_table.groupby("patient_id")
-            .average_prostate_heatmap_value.mean()
-            .values
-        )
-        labels = (
-            results_table.groupby("patient_id").clinically_significant.sum() > 0
-        ).values
-        metrics_ = calculate_metrics(
-            predictions, labels, log_images=self.config.wandb.log_images
-        )
-        metrics.update(
-            {f"{metric}_patient": value for metric, value in metrics_.items()}
-        )
+        # patient predictions -- SKIP
+        #predictions = (
+        #    results_table.groupby("patient_id")
+        #    .average_prostate_heatmap_value.mean()
+        #    .values
+        #)
+        #labels = (
+        #    results_table.groupby("patient_id").clinically_significant.sum() > 0
+        #).values
+        #metrics_ = calculate_metrics(
+        #    predictions, labels, log_images=self.config.wandb.log_images
+        #)
+        #metrics.update(
+        #    {f"{metric}_patient": value for metric, value in metrics_.items()}
+        #)
 
         metrics = {f"{desc}/{k}": v for k, v in metrics.items()}
         metrics["epoch"] = self.epoch
@@ -757,58 +781,70 @@ class Experiment:
         if self.config.wandb.log_images is False:
             return
 
-        bmode = batch["bmode"].to(self.config.device)
-        needle_mask = batch["needle_mask"].to(self.config.device)
-        prostate_mask = batch["prostate_mask"].to(self.config.device)
-        label = batch["label"].to(self.config.device)
-        involvement = batch["involvement"].to(self.config.device)
-        psa = batch["psa"].to(self.config.device)
-        age = batch["age"].to(self.config.device)
-        family_history = batch["family_history"].to(self.config.device)
-        anatomical_location = batch["loc"].to(self.config.device)
-        approx_psa_density = batch["approx_psa_density"].to(self.config.device)
-        if "rf" in batch:
-            rf = batch.pop("rf").to(self.config.device)
-        else:
-            rf = None
+        bmode, needle_mask, prostate_mask, label, *metadata = batch
+            
+        bmode = bmode.unsqueeze(1)
+        prostate_mask = prostate_mask.unsqueeze(1)
+        needle_mask = needle_mask.unsqueeze(1)
 
-        core_ids = batch["core_id"]
-        if self.config.custom_prompt_table_path is not None:
-            custom_prompts = self.get_custom_prompts(core_ids)
-        else:
-            custom_prompts = None
+        bmode = torch.cat([bmode, bmode, bmode], dim=1)
+        bmode = bmode.to(self.config.device)
+        needle_mask = needle_mask.to(self.config.device)
+        prostate_mask = prostate_mask.to(self.config.device)
+        label = label.to(self.config.device)
+        
+        involvement = metadata[0]
+        involvement = involvement.to(self.config.device)
+        
+        #psa = batch["psa"].to(self.config.device)
+        #age = batch["age"].to(self.config.device)
+        #family_history = batch["family_history"].to(self.config.device)
+        #anatomical_location = batch["loc"].to(self.config.device)
+        #approx_psa_density = batch["approx_psa_density"].to(self.config.device)
+        #if "rf" in batch:
+        #    rf = batch.pop("rf").to(self.config.device)
+        #else:
+        #    rf = None
+
+        #core_ids = batch["core_id"]
+        #if self.config.custom_prompt_table_path is not None:
+        #    custom_prompts = self.get_custom_prompts(core_ids)
+        #else:
+        #    custom_prompts = None
 
         B = len(bmode)
         task_id = torch.zeros(B, dtype=torch.long, device=bmode.device)
 
-        logits = self.model(
-            bmode,
-            task_id=task_id,
-            anatomical_location=anatomical_location,
-            psa=psa,
-            age=age,
-            family_history=family_history,
-            prostate_mask=prostate_mask,
-            needle_mask=needle_mask,
-            approx_psa_density=approx_psa_density,
-            custom=custom_prompts,
-            rf_image=rf,
-        )
+        with torch.cuda.amp.autocast(enabled=self.config.use_amp):
+            logits = self.model(
+                bmode,
+                prostate_mask=prostate_mask,
+                needle_mask=needle_mask,
+                #rf_image=rf, # should be easy to use SSL+VICReg with RF next
+            )
 
         pred = logits.sigmoid()
 
-        needle_mask = needle_mask.cpu()
-        prostate_mask = prostate_mask.cpu()
-        logits = logits.cpu()
-        pred = pred.cpu()
-        image = bmode.cpu()
+        logits = logits.cpu().double()
+        pred = pred.cpu().double()
+        label = label.cpu().double()
+        image = bmode.cpu().double()
+        prostate_mask = prostate_mask.cpu().double()
+        needle_mask = needle_mask.cpu().double()
+        
+        # Print types of all vars
+        print(f"label: {(label).dtype}")
+        print(f"pred: {(pred).dtype}")
+        print(f"image: {(image).dtype}")
+        print(f"logits: {(logits).dtype}")
+        print(f"prostate_mask: {(prostate_mask).dtype}")
+        print(f"needle_mask: {(needle_mask).dtype}")
 
         fig, ax = plt.subplots(1, 3, figsize=(12, 4))
         [ax.set_axis_off() for ax in ax.flatten()]
         kwargs = dict(vmin=0, vmax=1, extent=(0, 46, 0, 28))
 
-        ax[0].imshow(image[0].permute(1, 2, 0), **kwargs)
-        prostate_mask = prostate_mask.cpu()
+        ax[0].imshow(image[0].permute(1, 2, 0), cmap='gray')
         ax[0].imshow(
             prostate_mask[0, 0], alpha=prostate_mask[0][0] * 0.3, cmap="Blues", **kwargs
         )
@@ -821,12 +857,16 @@ class Experiment:
             needle_mask[0][0] > 0.5
         ).float()
 
+        mask_size = bmode.shape[-1] // 4
+
         alpha = torch.nn.functional.interpolate(
             valid_loss_region[None, None],
-            size=(self.config.mask_size, self.config.mask_size),
+            size=(mask_size, mask_size),
             mode="nearest",
         )[0, 0]
         ax[2].imshow(pred[0, 0], alpha=alpha, **kwargs)
+
+        return wandb.Image(plt)
 
     def save_experiment_state(self):
         if self.exp_state_path is None:
@@ -1030,6 +1070,23 @@ class CancerDetectionValidRegionLoss(CancerDetectionLossBase):
                     self.loss_pos_weight, device=predictions.device
                 ),
             )
+        elif self.base_loss == "ce_mae": # add MAE for noise tolerance
+            ce_loss = nn.functional.binary_cross_entropy_with_logits(
+                predictions,
+                labels,
+                pos_weight=torch.tensor(
+                    self.loss_pos_weight, device=predictions.device
+                ),
+            )
+
+            loss_unreduced = nn.functional.l1_loss(
+                predictions, labels, reduction="none"
+            )
+            loss_unreduced[labels == 1] *= self.loss_pos_weight
+            mae_loss = loss_unreduced.mean()
+
+            loss += (ce_loss + mae_loss) / 2
+
         elif self.base_loss == "gce":
             # we should convert to "two class" classification problem
             loss_fn = BinaryGeneralizedCrossEntropy()

@@ -11,9 +11,11 @@ from torch.utils.data import Dataset
 import numpy as np
 import pandas as pd
 
+from skimage.transform import resize
+
 from sklearn.model_selection import train_test_split
 
-DATA_DIR_ROOT_MAIN = "/ssd005/projects/exactvu_pca/bk_ubc/"
+DATA_DIR_ROOT_MAIN = "/projects/bk_pca/BK_UBC_CORES/"
 DATA_DIR_PATCH_ROOT =  "/ssd005/projects/exactvu_pca/bk_ubc/patches/UBC/patch_48x48_str32_avg/"
 
 def get_patch_labels():
@@ -21,15 +23,15 @@ def get_patch_labels():
     for patient in os.listdir(DATA_DIR_PATCH_ROOT):
         labels = []
         invs = []
+        patient_id = patient.replace("Patient", "")
         try:
             for core in os.listdir(DATA_DIR_PATCH_ROOT + str(patient) + "/patches_rf_core"):
                 labels.append(1 if "cancer" in core else 0)
                 inv = re.findall('_inv([\d.[0-9]+)', core)
                 invs.append(float(inv[0]) if inv else 0)
-            patients[patient] = (labels, invs)
+            patients[patient_id] = (labels, invs)
         except FileNotFoundError:
             continue
-
     return patients
 
 def build_label_table():
@@ -38,7 +40,7 @@ def build_label_table():
         labels, invs = value
         for i in range(len(labels)):
             label, inv = labels[i], invs[i]
-            row = pd.DataFrame({"core_id": [key+str(i)], "patient_id": [key], "label": [label], "inv": [inv]})
+            row = pd.DataFrame({"core_id": [f'{key}.{i}'], "patient_id": [key], "label": [label], "inv": [inv]})
             df = pd.concat([df, row], ignore_index=True)
     return df
 
@@ -50,8 +52,31 @@ def select_patients(all_files, patient_ids):
             patient_files.append(file)
     return patient_files
 
-def split_patients(inv_threshold=None):
+def get_tmi23_patients(inv_threshold=None):
+    def _format_patient_list(lst):
+        return [f"{pid}" for pid in lst]
     table = build_label_table()
+    if inv_threshold:
+        table = table[(table["inv"] >= inv_threshold) | (table["label"] == 0)]
+
+    train_pa = _format_patient_list([2, 3, 5, 6, 8, 11, 13, 14, 15, 16, 18, 20, 22, 23, 24, 26, 27, 28, 38, 39, 40, 41, 42, 43, 44, 45, 48, 50, 51, 52, 53, 56, 57, 58, 59, 60, 61, 62, 63, 65, 66, 68, 69, 70, 71, 72, 74, 76, 78, 80, 81, 82, 83, 84, 85, 87, 88, 89, 90, 92, 93, 94, 95, 96, 97, 98, 100])
+    val_pa = _format_patient_list([130, 103, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 117, 121, 123, 124, 125, 126, 127])
+    test_pa = _format_patient_list([131, 132, 133, 134, 136, 138, 139, 141, 142, 143, 144, 147, 148, 149, 150, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 171, 172, 173, 175, 176, 181, 182, 186, 187])
+
+    train_idx = table.patient_id.isin(set(train_pa))
+    val_idx = table.patient_id.isin(val_pa)
+    test_idx = table.patient_id.isin(test_pa)
+
+    train_tab, val_tab, test_tab = table[train_idx], table[val_idx], table[test_idx]
+
+    assert set(train_tab.patient_id) & set(val_tab.patient_id) == set()
+    assert set(train_tab.patient_id) & set(test_tab.patient_id) == set()
+    assert set(val_tab.patient_id) & set(test_tab.patient_id) == set()
+
+    return train_tab, val_tab, test_tab
+
+def split_patients(inv_threshold=None, by_patients=None):
+    table = build_label_table(by_patients)
     if inv_threshold:
         table = table[(table["inv"] >= inv_threshold) | (table["label"] == 0)]
     patient_table = table.drop_duplicates(subset=["patient_id"])
@@ -76,32 +101,8 @@ def split_patients(inv_threshold=None):
 
     return train_tab, val_tab, test_tab
 
-
-def get_tmi23_patients(inv_threshold=None):
-    def _format_patient_list(lst):
-        return [f"Patient{pid}" for pid in lst]
-    table = build_label_table()
-    if inv_threshold:
-        table = table[(table["inv"] >= inv_threshold) | (table["label"] == 0)]
-
-    train_pa = _format_patient_list([2, 3, 5, 6, 8, 11, 13, 14, 15, 16, 18, 20, 22, 23, 24, 26, 27, 28, 38, 39, 40, 41, 42, 43, 44, 45, 48, 50, 51, 52, 53, 56, 57, 58, 59, 60, 61, 62, 63, 65, 66, 68, 69, 70, 71, 72, 74, 76, 78, 80, 81, 82, 83, 84, 85, 87, 88, 89, 90, 92, 93, 94, 95, 96, 97, 98, 100])
-    val_pa = _format_patient_list([130, 103, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 117, 121, 123, 124, 125, 126, 127])
-    test_pa = _format_patient_list([131, 132, 133, 134, 136, 138, 139, 141, 142, 143, 144, 147, 148, 149, 150, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 171, 172, 173, 175, 176, 181, 182, 186, 187])
-
-    train_idx = table.patient_id.isin(set(train_pa))
-    val_idx = table.patient_id.isin(val_pa)
-    test_idx = table.patient_id.isin(test_pa)
-
-    train_tab, val_tab, test_tab = table[train_idx], table[val_idx], table[test_idx]
-
-    assert set(train_tab.patient_id) & set(val_tab.patient_id) == set()
-    assert set(train_tab.patient_id) & set(test_tab.patient_id) == set()
-    assert set(val_tab.patient_id) & set(test_tab.patient_id) == set()
-
-    return train_tab, val_tab, test_tab
-
-def make_bk_dataloaders(self_supervised=False, inv_threshold=None):
-    train_tab, val_tab, test_tab = get_tmi23_patients(inv_threshold)
+def make_bk_dataloaders(self_supervised=False):
+    train_tab, val_tab, test_tab = get_tmi23_patients()
 
     _BKPatchesDataset = BKPatchLabeledDataset if not self_supervised else BKPatchUnlabeledDataset
     transform =PatchTransform() if not self_supervised else PatchSSLTransform()
@@ -114,6 +115,89 @@ def make_bk_dataloaders(self_supervised=False, inv_threshold=None):
     test_dl = torch.utils.data.DataLoader(test_ds, batch_size=32, shuffle=False)
 
     return train_dl, val_dl, test_dl
+
+def make_corewise_bk_dataloaders(batch_sz, im_sz=1024, style='avg_all'):
+    train_tab, val_tab, test_tab = get_tmi23_patients()
+
+    transform = RandomTranslation()
+    train_ds = BKCorewiseDataset(DATA_DIR_ROOT_MAIN, df=train_tab, transform=transform, im_sz=im_sz, style=style)
+    val_ds = BKCorewiseDataset(DATA_DIR_ROOT_MAIN, df=val_tab, transform=transform, im_sz=im_sz, style=style)
+    test_ds = BKCorewiseDataset(DATA_DIR_ROOT_MAIN, df=test_tab, transform=transform, im_sz=im_sz, style=style)
+
+    train_dl = torch.utils.data.DataLoader(train_ds, batch_size=batch_sz, shuffle=True)
+    val_dl = torch.utils.data.DataLoader(val_ds, batch_size=batch_sz, shuffle=False)
+    test_dl = torch.utils.data.DataLoader(test_ds, batch_size=batch_sz, shuffle=False)
+
+    return train_dl, val_dl, test_dl
+
+class BKCorewiseDataset(Dataset):
+    def __init__(self, data_dir, df, transform, im_sz=1024, style='avg_all'):
+        super(BKCorewiseDataset, self).__init__()
+        self.data = self.collect_files(df, data_dir)
+        self.transform = transform
+        self.table = df
+        self.im_sz = im_sz
+        self.style = style 
+
+    def __getitem__(self, idx):
+        file_arr = self.data[idx]
+        roi_mask = np.load(file_arr[1])
+        prostate_mask = np.load(file_arr[2])
+        label = file_arr[3]
+        involvement = file_arr[4]
+        core_id = file_arr[5]
+        patient_id = file_arr[6]
+        rf_file = np.load(file_arr[0])
+
+        if self.style == 'last_frame':
+            bmode = self.make_analytical(rf_file[:, :, -1])
+        elif self.style == 'avg_last_100':
+            bmode = self.make_analytical(rf_file[:, :, -100:].mean(axis=-1))
+        elif self.style == 'avg_all':
+            bmode = self.make_analytical(rf_file.mean(axis=-1))
+        elif self.style == 'random':
+            frame_idx = np.random.randint(100, rf_file.shape[-1])
+            bmode = self.make_analytical(rf_file[:, :, frame_idx])
+        else:
+            print("Invalid style. Using avg_all.")
+            bmode = self.make_analytical(rf_file.mean(axis=-1))
+        
+        bmode = resize(bmode, (self.im_sz, self.im_sz))
+        roi_mask = resize(roi_mask, (self.im_sz // 4, self.im_sz // 4))
+        prostate_mask = resize(prostate_mask, (self.im_sz // 4, self.im_sz // 4))
+
+        return (bmode, roi_mask, prostate_mask, label, 
+                involvement, core_id, patient_id)
+    
+    def __len__(self):
+        return len(self.data)
+
+    def collect_files(self, df, data_dir, core_idx_upper_bound=15):
+        file_tuples = []
+        for patient in list(set(df.patient_id)):
+            for i in range(1, 12):
+                try:
+                    roi_file = (f'{data_dir}pat{patient}_cor{i}_needle.npy')
+                    wp_file = (f'{data_dir}pat{patient}_cor{i}_prostate.npy')
+                    rf_file = (f'{data_dir}pat{patient}_cor{i}_rf.npy')
+                    os.stat(rf_file)
+                    label_values = df[df.core_id == f'{patient}.{i}'].label.values
+                    assert label_values.shape[0] == 1
+                    sub_df = df[df.core_id == f'{patient}.{i}']
+                    inv = sub_df.inv.values[0]
+                    core_id = sub_df.core_id.values[0]
+                    patient_id = sub_df.patient_id.values[0]
+                    file_tuples.append((rf_file, roi_file, wp_file, label_values[0], inv, core_id, patient_id))
+                except AssertionError:
+                    pass
+                except FileNotFoundError:
+                    pass
+
+        return file_tuples
+
+    def make_analytical(self, x):
+        from scipy.signal import hilbert
+        return np.abs(hilbert(x)) ** 0.3
 
 class BKPatchDataset(Dataset):
     def __init__(self, data_dir, patient_ids, transform, pid_range=(0, np.Inf), norm=True, return_idx=True, stats=None,
@@ -253,8 +337,6 @@ class BKPatchUnlabeledDataset(BKPatchDataset):
         self.extract_metadata()
         self.filter_by_pid()
 
-
-
 class PatchSSLTransform:
     def __call__(self, patch):
         patch = torch.from_numpy(patch).float() / 255.0
@@ -275,3 +357,22 @@ class PatchTransform:
         patch = torch.from_numpy(patch).float() / 255.0
         patch = patch.unsqueeze(0).repeat_interleave(3, dim=0)
         return patch
+
+class RandomTranslation: 
+    def __init__(self, translation=(0.2, 0.2)): 
+        self.translation = translation
+
+    def __call__(self, *images):
+        from torchvision.transforms.functional import affine
+        from random import uniform
+
+        h_factor, w_factor = uniform(-self.translation[0], self.translation[0]), uniform(-self.translation[1], self.translation[1])
+
+        outputs = []
+        for image in images:
+            H, W = image.shape[-2:]
+            translate_x = int(w_factor * W)
+            translate_y = int(h_factor * H)
+            outputs.append(affine(image, angle=0, translate=(translate_x, translate_y), scale=1, shear=0))
+
+        return outputs[0] if len(outputs) == 1 else outputs

@@ -43,8 +43,9 @@ cd /h/harmanan/medAI/projects/miccai2024
 /h/harmanan/anaconda3/envs/medai/bin/python bk_patch_ssl.py \
     --batch_size 32 \
     --seed 0 \
-    --inv_threshold 0.4 \
+    --inv_threshold 0.7 \
     --save_weights_path=/h/harmanan/medAI/ckpt/bk_patch_ssl_$SLURM_JOB_ID.pth \
+    --backbone resnet18 \
     --checkpoint_path=/checkpoint/$USER/$SLURM_JOB_ID/checkpoint.pt &
 
 child_pid=$!

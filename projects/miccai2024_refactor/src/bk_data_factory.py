@@ -334,7 +334,7 @@ class TransformV2:
         return out
 
 
-class BModeDataFactoryV1Config(BaseModel):
+class BK_DataFactoryV1Config(BaseModel):
     """
     Args:
         fold (int): The fold to use. If not specified, uses leave-one-center-out cross-validation.
@@ -355,9 +355,6 @@ class BModeDataFactoryV1Config(BaseModel):
         include_rf (bool): If True, includes the radiofrequency data in the dataset.
     """
 
-    fold: int | None = None
-    n_folds: int | None = None
-    test_center: str | None  = 'UVA'
     undersample_benign_ratio: float | None = None
     min_involvement_train: float | None = 40
     remove_benign_cores_from_positive_patients: bool = True
@@ -372,98 +369,27 @@ class BModeDataFactoryV1Config(BaseModel):
     rf_as_bmode: bool = False 
     include_rf: bool = False 
 
-class BModeDataFactoryV1(DataFactory):
-    def __init__(self, config: BModeDataFactoryV1Config):
+class BK_DataFactoryV1(DataFactory):
+    def __init__(self, config: BK_DataFactoryV1Config):
         self.cfg = config
 
-        from medAI.datasets.nct2013.bmode_dataset import BModeDatasetV1
-        from medAI.datasets.nct2013.cohort_selection import select_cohort
+        from medAI.datasets.data_bk import make_corewise_bk_dataloaders
 
-        train_cores, val_cores, test_cores = select_cohort(
-            fold=self.cfg.fold,
-            n_folds=self.cfg.n_folds,
-            test_center=self.cfg.test_center,
-            undersample_benign_ratio=self.cfg.undersample_benign_ratio,
-            involvement_threshold_pct=self.cfg.min_involvement_train,
-            exclude_benign_cores_from_positive_patients=self.cfg.remove_benign_cores_from_positive_patients,
-            splits_file="/ssd005/projects/exactvu_pca/nct2013/patient_splits.csv",
-            val_seed=self.cfg.val_seed,
-        )
-
-        if self.cfg.limit_train_data is not None:
-            cores = train_cores
-            center = [core.split("-")[0] for core in cores]
-            from sklearn.model_selection import StratifiedShuffleSplit
-
-            sss = StratifiedShuffleSplit(
-                n_splits=1,
-                test_size=1 - self.cfg.limit_train_data,
-                random_state=self.cfg.train_subset_seed,
-            )
-            for train_index, _ in sss.split(cores, center):
-                train_cores = [cores[i] for i in train_index]
-
-        self.train_transform = TransformV2(
-            augment=self.cfg.augmentations,
-            image_size=self.cfg.image_size,
-            labeled=self.cfg.labeled,
-            mask_size=self.cfg.mask_size,
-        )
-        self.val_transform = TransformV2(
-            augment="none",
-            image_size=self.cfg.image_size,
-            labeled=self.cfg.labeled,
-            mask_size=self.cfg.mask_size,
-        )
-
-        self.train_dataset = BModeDatasetV1(
-            train_cores,
-            self.train_transform,
-            rf_as_bmode=self.cfg.rf_as_bmode,
-            include_rf=self.cfg.include_rf,
-        )
-        self.val_dataset = BModeDatasetV1(
-            val_cores,
-            self.val_transform,
-            rf_as_bmode=self.cfg.rf_as_bmode,
-            include_rf=self.cfg.include_rf,
-        )
-        self.test_dataset = BModeDatasetV1(
-            test_cores,
-            self.val_transform,
-            rf_as_bmode=self.cfg.rf_as_bmode,
-            include_rf=self.cfg.include_rf,
+        self.train_loader, self.val_loader, self.test_loader = make_corewise_bk_dataloaders(
+            batch_sz=self.cfg.batch_size,
         )
 
         self.batch_size = self.cfg.batch_size
         self.labeled = self.cfg.labeled
 
     def train_loader(self):
-        return DataLoader(
-            self.train_dataset,
-            batch_size=self.batch_size,
-            shuffle=True,
-            num_workers=8,
-            pin_memory=True,
-        )
+        return self.train_loader
 
     def val_loader(self):
-        return DataLoader(
-            self.val_dataset,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=8,
-            pin_memory=True,
-        )
+        return self.val_loader
 
     def test_loader(self):
-        return DataLoader(
-            self.test_dataset,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=8,
-            pin_memory=True,
-        )
+        return self.test_loader
 
 
 class AlignedFilesSegmentationDataFactory(DataFactory):

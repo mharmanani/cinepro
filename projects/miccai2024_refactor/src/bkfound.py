@@ -48,9 +48,9 @@ class BackboneOptions(StrEnum):
     adapter_sammed_2d = "adapter_sammed_2d"
 
 
-class ProstNFoundConfig(BaseModel):
+class BKFoundConfig(BaseModel):
     """
-    Configuration for the ProstNFound model.
+    Configuration for the BKFound model.
 
     Args:
         n_tasks (int): Number of tasks. Defaults to 1.
@@ -87,10 +87,10 @@ class ProstNFoundConfig(BaseModel):
     pool_patch_features: tp.Literal[None, "transformer", "max", "mean"] = None
 
 
-class ProstNFound(nn.Module):
+class BKFound(nn.Module):
     def __init__(
         self,
-        config: ProstNFoundConfig,
+        config: BKFoundConfig,
     ):
         super().__init__()
         self.config = config
@@ -107,7 +107,7 @@ class ProstNFound(nn.Module):
                 )
 
         from medAI.modeling.sam import (
-            build_adapter_medsam_256,
+            build_adapter_medsam_224,
             build_adapter_sam,
             build_adapter_sammed_2d,
             build_medsam,
@@ -120,7 +120,7 @@ class ProstNFound(nn.Module):
             self.medsam_model = build_medsam()
             self.image_size_for_features = 1024
         elif config.sam_backbone == "adapter_medsam":
-            self.medsam_model = build_adapter_medsam_256()
+            self.medsam_model = build_adapter_medsam_224()
             self.image_size_for_features = 1024
         elif config.sam_backbone == "sam":
             self.medsam_model = build_sam()
@@ -212,8 +212,9 @@ class ProstNFound(nn.Module):
         # CNN for extracting patch features
         from timm.models.resnet import resnet10t
         from medAI.modeling.resnet import resnet32
+        from torchvision.models import resnet18, resnet34, resnet50
 
-        model = resnet32()
+        model = resnet18(pretrained=False)
         model.fc = nn.Identity()
         model = nn.Sequential(nn.InstanceNorm2d(3), model)
         if config.sparse_cnn_backbone_path is not None:
@@ -279,7 +280,7 @@ class ProstNFound(nn.Module):
             )
         else:
             image_resized_for_features = image
-        image_feats = self.medsam_model.image_encoder(image_resized_for_features)
+        image_feats = self.medsam_model.image_encoder(image_resized_for_features.half())
         image_feats = self.img_emb_dropout(image_feats)
 
         if "prostate_mask" in self.config.prompts:
