@@ -1,6 +1,7 @@
 import re
 import os
 from glob import glob
+import json
 
 import torch
 import torch.nn as nn
@@ -17,6 +18,9 @@ from sklearn.model_selection import train_test_split
 
 DATA_DIR_ROOT_MAIN = "/projects/bk_pca/BK_UBC_CORES/"
 DATA_DIR_PATCH_ROOT =  "/ssd005/projects/exactvu_pca/bk_ubc/patches/UBC/patch_48x48_str32_avg/"
+
+DATA_CORES_UBC = "/projects/bk_pca/BK_UBC_CORES/"
+DATA_CORES_QUEENS = "/projects/bk_pca/BK_QUEENS_CORES/"
 
 def get_patch_labels():
     patients = {}
@@ -42,6 +46,43 @@ def build_label_table():
             label, inv = labels[i], invs[i]
             row = pd.DataFrame({"core_id": [f'{key}.{i}'], "patient_id": [key], "label": [label], "inv": [inv]})
             df = pd.concat([df, row], ignore_index=True)
+    return df
+
+def extract_info_json(info_array, df, _pandas_idx=0):
+    import json
+    dicts = [df] if df.shape[0] > 0 else []
+    for info in info_array:
+        data = json.load(open(info))
+        center = re.findall('BK_(\w+)_CORES', info)[0]
+        core_idx = re.findall('pat(\d+)_cor(\d+)', info)[0]
+        core_id = core_idx[0] + '.' + core_idx[1]
+        entry = {
+                'core_id': core_id,
+                'center': center,
+                'patient_id': core_id.split('.')[0],
+                'inv': data['Involvement'] / 100,
+                'pathology': data['Pathology'],
+                'label': 0 if data['Pathology'] == 'Benign' else 1,
+                'filetemplate': info.replace('_info.json', '')
+            }
+        dicts.append(pd.DataFrame(entry, index=[_pandas_idx]))
+        _pandas_idx += 1
+        
+    df = pd.concat(dicts)
+    return df
+
+def make_table(ubc=True, queens=True):
+    df = pd.DataFrame(columns=['core_id', 'patient_id', 'inv', 'pathology', 'label'])
+    ubc_cores = os.listdir(DATA_CORES_UBC)
+    queens_cores = os.listdir(DATA_CORES_QUEENS)
+
+    if ubc:
+        ubc_info = [DATA_CORES_UBC+filename for filename in ubc_cores if filename.endswith(".json")]
+        df = extract_info_json(ubc_info, df)
+    if queens:
+        queens_info = [DATA_CORES_QUEENS+filename for filename in queens_cores if filename.endswith(".json")]
+        df = extract_info_json(queens_info, df, df.shape[0]-1)
+
     return df
 
 def select_patients(all_files, patient_ids):
@@ -76,7 +117,7 @@ def get_tmi23_patients(inv_threshold=None):
     return train_tab, val_tab, test_tab
 
 def split_patients(inv_threshold=None, by_patients=None):
-    table = build_label_table(by_patients)
+    table = make_table(ubc=True, queens=True)
     if inv_threshold:
         table = table[(table["inv"] >= inv_threshold) | (table["label"] == 0)]
     patient_table = table.drop_duplicates(subset=["patient_id"])
@@ -99,6 +140,12 @@ def split_patients(inv_threshold=None, by_patients=None):
     assert set(train_tab.patient_id) & set(test_tab.patient_id) == set()
     assert set(val_tab.patient_id) & set(test_tab.patient_id) == set()
 
+    print(f"Train: {len(train_tab)}")
+    print(f"Val: {len(val_tab)}")
+    print(f"Test: {len(test_tab)}")
+
+    print(train_tab.center.value_counts())
+
     return train_tab, val_tab, test_tab
 
 def make_bk_dataloaders(self_supervised=False):
@@ -117,12 +164,12 @@ def make_bk_dataloaders(self_supervised=False):
     return train_dl, val_dl, test_dl
 
 def make_corewise_bk_dataloaders(batch_sz, im_sz=1024, style='avg_all'):
-    train_tab, val_tab, test_tab = get_tmi23_patients()
+    train_tab, val_tab, test_tab = split_patients(inv_threshold=0.4)
 
-    transform = RandomTranslation()
-    train_ds = BKCorewiseDataset(DATA_DIR_ROOT_MAIN, df=train_tab, transform=transform, im_sz=im_sz, style=style)
-    val_ds = BKCorewiseDataset(DATA_DIR_ROOT_MAIN, df=val_tab, transform=transform, im_sz=im_sz, style=style)
-    test_ds = BKCorewiseDataset(DATA_DIR_ROOT_MAIN, df=test_tab, transform=transform, im_sz=im_sz, style=style)
+    transform = CorewiseTransform()
+    train_ds = BKCorewiseDataset(df=train_tab, transform=transform, im_sz=im_sz, style=style)
+    val_ds = BKCorewiseDataset(df=val_tab, transform=transform, im_sz=im_sz, style=style)
+    test_ds = BKCorewiseDataset(df=test_tab, transform=transform, im_sz=im_sz, style=style)
 
     train_dl = torch.utils.data.DataLoader(train_ds, batch_size=batch_sz, shuffle=True)
     val_dl = torch.utils.data.DataLoader(val_ds, batch_size=batch_sz, shuffle=False)
@@ -131,13 +178,16 @@ def make_corewise_bk_dataloaders(batch_sz, im_sz=1024, style='avg_all'):
     return train_dl, val_dl, test_dl
 
 class BKCorewiseDataset(Dataset):
-    def __init__(self, data_dir, df, transform, im_sz=1024, style='avg_all'):
+    def __init__(self, df, transform, im_sz=1024, style='avg_all', ubc_data=True, queens_data=True):
         super(BKCorewiseDataset, self).__init__()
-        self.data = self.collect_files(df, data_dir)
+        self.data = self.collect_files(df)
         self.transform = transform
         self.table = df
         self.im_sz = im_sz
         self.style = style 
+
+        self.ubc_data = ubc_data
+        self.queens_data = queens_data
 
     def __getitem__(self, idx):
         file_arr = self.data[idx]
@@ -158,11 +208,18 @@ class BKCorewiseDataset(Dataset):
         elif self.style == 'random':
             frame_idx = np.random.randint(100, rf_file.shape[-1])
             bmode = self.make_analytical(rf_file[:, :, frame_idx])
+        elif self.style == 'random_avg':
+            frame_idx = np.random.randint(50, 150)
+            bmode = self.make_analytical(rf_file[:, :, frame_idx:frame_idx+5].mean(axis=-1))
         else:
             print("Invalid style. Using avg_all.")
             bmode = self.make_analytical(rf_file.mean(axis=-1))
         
         bmode = resize(bmode, (self.im_sz, self.im_sz))
+        if self.transform is not None:
+            print(bmode.shape)
+            bmode = self.transform(torch.from_numpy(bmode).unsqueeze(0).float())
+            bmode = bmode.squeeze(0).numpy()
         roi_mask = resize(roi_mask, (self.im_sz // 4, self.im_sz // 4))
         prostate_mask = resize(prostate_mask, (self.im_sz // 4, self.im_sz // 4))
 
@@ -171,8 +228,36 @@ class BKCorewiseDataset(Dataset):
     
     def __len__(self):
         return len(self.data)
+    
+    def collect_files(self, df):
+        file_tuples = []
+        for filetemplate in list(df.filetemplate):
+            try:
+                roi_file = filetemplate + '_needle.npy'
+                wp_file = filetemplate + '_prostate.npy'
+                rf_file = filetemplate + '_rf.npy'
+                core_id = filetemplate.split('/')[-1].replace('pat', '').replace('_cor', '.')
+                os.stat(rf_file)
+                os.stat(roi_file)
+                os.stat(wp_file)
+                label_values = df[df.core_id == core_id].label.values
+                assert label_values.shape[0] == 1
+                sub_df = df[df.core_id == core_id]
+                inv = sub_df.inv.values[0]
+                core_id = sub_df.core_id.values[0]
+                patient_id = sub_df.patient_id.values[0]
+                file_tuples.append((rf_file, roi_file, wp_file, label_values[0], inv, core_id, patient_id))
+            except AssertionError:
+                pass
+            except FileNotFoundError:
+                pass
+        
+        print(f"Found {len(file_tuples)} files.")
 
-    def collect_files(self, df, data_dir, core_idx_upper_bound=15):
+        return file_tuples
+        
+
+    def collect_files_old(self, df, data_dir, core_idx_upper_bound=15):
         file_tuples = []
         for patient in list(set(df.patient_id)):
             for i in range(1, 12):
@@ -357,9 +442,24 @@ class PatchTransform:
         patch = torch.from_numpy(patch).float() / 255.0
         patch = patch.unsqueeze(0).repeat_interleave(3, dim=0)
         return patch
+    
+class SpeckleNoise: 
+    def __call__(self, *images):
+        from torchvision.transforms.functional import affine
+        from random import uniform
+
+        outputs = []
+        for image in images:
+            C, H, W = image.shape
+            gauss = torch.randn((C, H, W))      
+            noisy = image + 0.5 * image * gauss
+            outputs.append(noisy)
+            print(outputs[-1].shape)
+
+        return outputs[0] if len(outputs) == 1 else outputs
 
 class RandomTranslation: 
-    def __init__(self, translation=(0.2, 0.2)): 
+    def __init__(self, translation=(0.1, 0.1)): 
         self.translation = translation
 
     def __call__(self, *images):
@@ -374,5 +474,15 @@ class RandomTranslation:
             translate_x = int(w_factor * W)
             translate_y = int(h_factor * H)
             outputs.append(affine(image, angle=0, translate=(translate_x, translate_y), scale=1, shear=0))
+            print(outputs[-1].shape)
 
         return outputs[0] if len(outputs) == 1 else outputs
+    
+class CorewiseTransform:
+    def __call__(self, *images):
+        transform = T.Compose([
+            SpeckleNoise(),
+            RandomTranslation()
+        ])
+
+        return transform(*images)

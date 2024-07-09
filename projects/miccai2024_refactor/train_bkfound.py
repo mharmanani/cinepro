@@ -371,7 +371,7 @@ class Experiment:
         print(f"Batch size: {data_config.batch_size}")
 
         self.train_loader, self.val_loader, self.test_loader = \
-            make_corewise_bk_dataloaders(batch_sz=data_config.batch_size, im_sz=1024, style='last_frame')
+            make_corewise_bk_dataloaders(batch_sz=data_config.batch_size, im_sz=1024, style='rand_avg')
         
         logging.info(f"Number of training batches: {len(self.train_loader)}")
         logging.info(f"Number of validation batches: {len(self.val_loader)}")
@@ -467,7 +467,7 @@ class Experiment:
             prostate_mask = prostate_mask.unsqueeze(1)
             needle_mask = needle_mask.unsqueeze(1)
             
-            bmode = torch.cat([bmode, bmode, bmode], dim=1)
+            bmode = torch.cat([bmode, bmode, bmode], dim=1) / bmode.max()
             bmode = bmode.to(self.config.device)
             needle_mask = needle_mask.to(self.config.device)
             prostate_mask = prostate_mask.to(self.config.device)
@@ -635,7 +635,7 @@ class Experiment:
             prostate_mask = prostate_mask.unsqueeze(1)
             needle_mask = needle_mask.unsqueeze(1)
 
-            bmode = torch.cat([bmode, bmode, bmode], dim=1)
+            bmode = torch.cat([bmode, bmode, bmode], dim=1) / bmode.max()
             bmode = bmode.to(self.config.device)
             needle_mask = needle_mask.to(self.config.device)
             prostate_mask = prostate_mask.to(self.config.device)
@@ -787,7 +787,7 @@ class Experiment:
         prostate_mask = prostate_mask.unsqueeze(1)
         needle_mask = needle_mask.unsqueeze(1)
 
-        bmode = torch.cat([bmode, bmode, bmode], dim=1)
+        bmode = torch.cat([bmode, bmode, bmode], dim=1) / bmode.max()
         bmode = bmode.to(self.config.device)
         needle_mask = needle_mask.to(self.config.device)
         prostate_mask = prostate_mask.to(self.config.device)
@@ -840,18 +840,20 @@ class Experiment:
         print(f"prostate_mask: {(prostate_mask).dtype}")
         print(f"needle_mask: {(needle_mask).dtype}")
 
-        fig, ax = plt.subplots(1, 3, figsize=(12, 4))
+        fig, ax = plt.subplots(1, 4, figsize=(12, 4))
         [ax.set_axis_off() for ax in ax.flatten()]
         kwargs = dict(vmin=0, vmax=1, extent=(0, 46, 0, 28))
 
         ax[0].imshow(image[0].permute(1, 2, 0), cmap='gray')
-        ax[0].imshow(
+
+        ax[1].imshow(image[0].permute(1, 2, 0), cmap='gray')
+        ax[1].imshow(
             prostate_mask[0, 0], alpha=prostate_mask[0][0] * 0.3, cmap="Blues", **kwargs
         )
-        ax[0].imshow(needle_mask[0, 0], alpha=needle_mask[0][0], cmap="Reds", **kwargs)
-        ax[0].set_title(f"Ground truth label: {label[0].item()}")
+        ax[1].imshow(needle_mask[0, 0], alpha=needle_mask[0][0], cmap="Reds", **kwargs)
+        ax[1].set_title(f"Ground truth label: {label[0].item()}")
 
-        ax[1].imshow(pred[0, 0], **kwargs)
+        ax[2].imshow(pred[0, 0], **kwargs)
 
         valid_loss_region = (prostate_mask[0][0] > 0.5).float() * (
             needle_mask[0][0] > 0.5
@@ -864,7 +866,7 @@ class Experiment:
             size=(mask_size, mask_size),
             mode="nearest",
         )[0, 0]
-        ax[2].imshow(pred[0, 0], alpha=alpha, **kwargs)
+        ax[3].imshow(pred[0, 0], alpha=alpha, **kwargs)
 
         return wandb.Image(plt)
 

@@ -11,3 +11,13 @@ wandb/*
 *.pyc
 *.pkl
 *.out
+
+*/*.png
+*/*.pyc
+*/*.pkl
+*/*.out
+
+*/__pycache__
+*/???
+*/logs
+*/wandb
