@@ -6,6 +6,9 @@ ckpt/*
 wandb
 wandb/*
 
+medAI/projects/miccai2024_refactor/logs
+medAI/projects/miccai2024_refactor/logs/*
+
 *.png
 
 *.pyc
