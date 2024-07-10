@@ -129,7 +129,7 @@ def split_patients(inv_threshold=None, by_patients=None):
     val_pa, test_pa = train_test_split(val_pa, 
         test_size=0.5, random_state=0, 
         stratify=val_pa["label"])
-
+    
     train_idx = table.patient_id.isin(train_pa.patient_id)
     val_idx = table.patient_id.isin(val_pa.patient_id)
     test_idx = table.patient_id.isin(test_pa.patient_id)
@@ -164,7 +164,7 @@ def make_bk_dataloaders(self_supervised=False):
     return train_dl, val_dl, test_dl
 
 def make_corewise_bk_dataloaders(batch_sz, im_sz=1024, style='avg_all'):
-    train_tab, val_tab, test_tab = split_patients(inv_threshold=0.4)
+    train_tab, val_tab, test_tab = split_patients()
 
     transform = CorewiseTransform()
     train_ds = BKCorewiseDataset(df=train_tab, transform=transform, im_sz=im_sz, style=style)
