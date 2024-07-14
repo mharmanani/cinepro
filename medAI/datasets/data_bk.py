@@ -62,7 +62,7 @@ def extract_info_json(info_array, df, _pandas_idx=0):
                 'patient_id': core_id.split('.')[0],
                 'inv': data['Involvement'] / 100,
                 'pathology': data['Pathology'],
-                'label': 0 if data['Pathology'] == 'Benign' else 1,
+                'label': 1 if data['Pathology'] != 'Benign' else 0,
                 'filetemplate': info.replace('_info.json', '')
             }
         dicts.append(pd.DataFrame(entry, index=[_pandas_idx]))
@@ -71,7 +71,7 @@ def extract_info_json(info_array, df, _pandas_idx=0):
     df = pd.concat(dicts)
     return df
 
-def make_table(ubc=True, queens=True):
+def make_table(ubc=True, queens=True, rm_ca_from_ben=True):
     df = pd.DataFrame(columns=['core_id', 'patient_id', 'inv', 'pathology', 'label'])
     ubc_cores = os.listdir(DATA_CORES_UBC)
     queens_cores = os.listdir(DATA_CORES_QUEENS)
@@ -82,6 +82,9 @@ def make_table(ubc=True, queens=True):
     if queens:
         queens_info = [DATA_CORES_QUEENS+filename for filename in queens_cores if filename.endswith(".json")]
         df = extract_info_json(queens_info, df, df.shape[0]-1)
+
+    if rm_ca_from_ben:
+        
 
     return df
 
@@ -116,18 +119,48 @@ def get_tmi23_patients(inv_threshold=None):
 
     return train_tab, val_tab, test_tab
 
-def split_patients(inv_threshold=None, by_patients=None):
+def split_centerwise(inv_threshold=None, by_patients=None):
     table = make_table(ubc=True, queens=True)
     if inv_threshold:
         table = table[(table["inv"] >= inv_threshold) | (table["label"] == 0)]
+
+    ubc_table = table[table.center == "UBC"]
+    ubc_patients = ubc_table.drop_duplicates(subset=["patient_id"])
+    queens_table = table[table.center == "QUEENS"]
+    queens_patients = queens_table.drop_duplicates(subset=["patient_id"])
+    
+    val_pa, test_pa = train_test_split(ubc_patients, 
+        test_size=0.5, random_state=0, 
+        stratify=ubc_patients["label"])
+
+    train_idx = table.patient_id.isin(queens_table.patient_id)
+    val_idx = table.patient_id.isin(val_pa.patient_id)
+    test_idx = table.patient_id.isin(test_pa.patient_id)
+    
+    train_tab, val_tab, test_tab = table[train_idx], table[val_idx], table[test_idx]
+
+    assert set(train_tab.patient_id) & set(val_tab.patient_id) == set()
+    assert set(train_tab.patient_id) & set(test_tab.patient_id) == set()
+    assert set(val_tab.patient_id) & set(test_tab.patient_id) == set()
+
+    print(f"Train: {len(train_tab)}")
+    print(f"Val: {len(val_tab)}")
+    print(f"Test: {len(test_tab)}")
+
+    print(train_tab.center.value_counts())
+
+    return train_tab, val_tab, test_tab
+
+def split_patients(seed=0):
+    table = make_table(ubc=True, queens=True)
     patient_table = table.drop_duplicates(subset=["patient_id"])
 
     train_pa, val_pa = train_test_split(patient_table, 
-        test_size=0.3, random_state=0, 
+        test_size=0.3, random_state=seed, 
         stratify=patient_table["label"])
     
     val_pa, test_pa = train_test_split(val_pa, 
-        test_size=0.5, random_state=0, 
+        test_size=0.5, random_state=seed, 
         stratify=val_pa["label"])
     
     train_idx = table.patient_id.isin(train_pa.patient_id)
@@ -148,6 +181,34 @@ def split_patients(inv_threshold=None, by_patients=None):
 
     return train_tab, val_tab, test_tab
 
+def split_patients_kfold(fold_id, k=5, seed=0):
+    table = make_table(ubc=True, queens=True)
+    patient_table = table.drop_duplicates(subset=["patient_id"])
+
+    from sklearn.model_selection import StratifiedKFold
+
+    skf = StratifiedKFold(n_splits=k, random_state=seed, shuffle=True)
+
+    for i, (train_idx, test_idx) in enumerate(skf.split(patient_table, patient_table["label"])):
+        print(f"Fold {i}")
+        print(f"Train: {len(train_idx)}")
+        print(f"Test: {len(test_idx)}")
+        if i == fold_id:
+            train_pa, val_pa = patient_table.iloc[train_idx], patient_table.iloc[test_idx]
+            val_pa, test_pa = train_test_split(val_pa, test_size=0.5, random_state=seed, stratify=val_pa["label"])
+            
+            train_idx = table.patient_id.isin(train_pa.patient_id)
+            val_idx = table.patient_id.isin(val_pa.patient_id)
+            test_idx = table.patient_id.isin(test_pa.patient_id)
+
+            train_tab, val_tab, test_tab = table[train_idx], table[val_idx], table[test_idx]
+
+            assert set(train_tab.patient_id) & set(val_tab.patient_id) == set()
+            assert set(train_tab.patient_id) & set(test_tab.patient_id) == set()
+            assert set(val_tab.patient_id) & set(test_tab.patient_id) == set()
+
+            return train_tab, val_tab, test_tab
+
 def make_bk_dataloaders(self_supervised=False):
     train_tab, val_tab, test_tab = get_tmi23_patients()
 
@@ -163,13 +224,26 @@ def make_bk_dataloaders(self_supervised=False):
 
     return train_dl, val_dl, test_dl
 
-def make_corewise_bk_dataloaders(batch_sz, im_sz=1024, style='avg_all'):
-    train_tab, val_tab, test_tab = split_patients()
+def make_corewise_bk_dataloaders(batch_sz, im_sz=1024, style='avg_all', splitting='patients', 
+                                 fold=0, num_folds=5, seed=0, inv_threshold=None):
+    if splitting == 'patients':
+        train_tab, val_tab, test_tab = split_patients(seed=seed)
+    elif splitting == 'centers':
+        train_tab, val_tab, test_tab = split_centerwise()
+    elif splitting == 'patients_kfold':
+        train_tab, val_tab, test_tab = split_patients_kfold(fold, k=num_folds, seed=seed)
+    else:
+        print("Invalid splitting method. Using patients.")
+        train_tab, val_tab, test_tab = split_patients()
+    
+    if inv_threshold:
+        assert type(inv_threshold) == float
+        train_tab = train_tab[(train_tab.inv > inv_threshold) | (train_tab.label == 0)]
 
     transform = CorewiseTransform()
     train_ds = BKCorewiseDataset(df=train_tab, transform=transform, im_sz=im_sz, style=style)
-    val_ds = BKCorewiseDataset(df=val_tab, transform=transform, im_sz=im_sz, style=style)
-    test_ds = BKCorewiseDataset(df=test_tab, transform=transform, im_sz=im_sz, style=style)
+    val_ds = BKCorewiseDataset(df=val_tab, transform=None, im_sz=im_sz, style=style)
+    test_ds = BKCorewiseDataset(df=test_tab, transform=None, im_sz=im_sz, style=style)
 
     train_dl = torch.utils.data.DataLoader(train_ds, batch_size=batch_sz, shuffle=True)
     val_dl = torch.utils.data.DataLoader(val_ds, batch_size=batch_sz, shuffle=False)
@@ -216,12 +290,16 @@ class BKCorewiseDataset(Dataset):
             bmode = self.make_analytical(rf_file.mean(axis=-1))
         
         bmode = resize(bmode, (self.im_sz, self.im_sz))
-        if self.transform is not None:
-            print(bmode.shape)
-            bmode = self.transform(torch.from_numpy(bmode).unsqueeze(0).float())
-            bmode = bmode.squeeze(0).numpy()
         roi_mask = resize(roi_mask, (self.im_sz // 4, self.im_sz // 4))
         prostate_mask = resize(prostate_mask, (self.im_sz // 4, self.im_sz // 4))
+        
+        if self.transform is not None:
+            bmode = self.transform(torch.from_numpy(bmode).unsqueeze(0).float())
+            bmode = bmode.squeeze(0).numpy()
+            roi_mask = self.transform(torch.from_numpy(roi_mask).unsqueeze(0).float())
+            roi_mask = roi_mask.squeeze(0).numpy()
+            prostate_mask = self.transform(torch.from_numpy(prostate_mask).unsqueeze(0).float())
+            prostate_mask = prostate_mask.squeeze(0).numpy()
 
         return (bmode, roi_mask, prostate_mask, label, 
                 involvement, core_id, patient_id)
@@ -443,6 +521,10 @@ class PatchTransform:
         patch = patch.unsqueeze(0).repeat_interleave(3, dim=0)
         return patch
     
+class Identity:
+    def __call__(self, *images):
+        return images[0] if len(images) == 1 else images
+
 class SpeckleNoise: 
     def __call__(self, *images):
         from torchvision.transforms.functional import affine
@@ -454,7 +536,6 @@ class SpeckleNoise:
             gauss = torch.randn((C, H, W))      
             noisy = image + 0.5 * image * gauss
             outputs.append(noisy)
-            print(outputs[-1].shape)
 
         return outputs[0] if len(outputs) == 1 else outputs
 
@@ -474,14 +555,12 @@ class RandomTranslation:
             translate_x = int(w_factor * W)
             translate_y = int(h_factor * H)
             outputs.append(affine(image, angle=0, translate=(translate_x, translate_y), scale=1, shear=0))
-            print(outputs[-1].shape)
 
         return outputs[0] if len(outputs) == 1 else outputs
     
 class CorewiseTransform:
     def __call__(self, *images):
         transform = T.Compose([
-            SpeckleNoise(),
             RandomTranslation()
         ])
 
