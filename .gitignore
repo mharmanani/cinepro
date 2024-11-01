@@ -21,6 +21,4 @@ medAI/projects/miccai2024_refactor/logs/*
 */*.out
 
 */__pycache__
-*/???
 */logs
-*/wandb
