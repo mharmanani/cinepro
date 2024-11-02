@@ -1,7 +1,7 @@
 # Cinepro: Robust Training of Foundation Models for Cancer Detection in Prostate Ultrasound Cineloops
 ---
 
-### 🚧 This README is under construction. For now, only the section on hyperparameter is available. 
+### 🚧 This README is under construction. For now, only the section on hyperparameter tuning is available. 
 
 ### Hyperparameter tuning
 ##### Learning rate, optimizer, batch size
