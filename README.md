@@ -14,7 +14,7 @@ One of the central aspects of the work is the design of a tailored loss function
 
 One of the earlier loss functions we tried is $\mathcal{L}_\text{OBP}$, which is the same as masked cross-entropy, but with an added term aiming to minimize the activations of the model outside the needle region. We found that this model yielded worse validation performance overall.
 
-We tried two other variations of an involvement-aware loss function, namely $\mathcal{L}_\text{iCE}$ and $\mathcal{L}_\text{iMAE}$. We found that $\mathcal{L}_\text{iCE}$ did not differ in validation performance when compared to $\mathcal{L}_\text{MaskCE}$, and $\mathcal{L}_\text{iMAE}$ was correlated with very poor performance, in some cases failing to exceed 60\% AUROC on the validation set.
+We tried two other variations of an involvement-aware loss function, namely $\mathcal{L}_ \text{iCE}$ and $\mathcal{L}_ \text{iMAE}$. We found that $\mathcal{L}_ \text{iCE}$ did not differ in validation performance when compared to $\mathcal{L}_ \text{MaskCE}$, and $\mathcal{L}_ \text{iMAE}$ was correlated with very poor performance, in some cases failing to exceed 60\% AUROC on the validation set.
 
 ##### Augmentations
 We experimented with various types of data augmentations, including gaussian noise, speckle noise, salt and pepper noise, rotations, translations, deformations, and pixel and line cuts.
