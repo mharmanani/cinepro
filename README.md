@@ -1,7 +1,12 @@
 # Cinepro: Robust Training of Foundation Models for Cancer Detection in Prostate Ultrasound Cineloops
 ---
 
-### 🚧 This README is under construction. For now, only the section on hyperparameter is available. 
+[!cinepro](./img/cinepro_v3.png)
+
+## Abstract
+Prostate cancer (PCa) detection using deep learning (DL) models has shown potential for enhancing real-time guidance during biopsies. However, prostate ultrasound images lack pixel-level cancer annotations, introducing label noise. Current approaches often focus on limited regions of interest (ROIs), disregarding anatomical context necessary for accurate diagnosis. Foundation models can overcome this limitation by analyzing entire images to capture global spatial relationships; however, they still encounter challenges stemming from the weak labels associated with coarse pathology annotations in ultrasound data. We introduce Cinepro, a novel framework that strengthens foundation models' ability to localize PCa in ultrasound cineloops. 
+Cinepro adapts robust training by integrating the proportion of cancer tissue reported by pathology in a biopsy core into its loss function to address label noise, providing a more nuanced supervision. Additionally, it leverages temporal data across multiple frames to apply robust augmentations, enhancing the model’s ability to learn stable cancer-related features. 
+Cinepro demonstrates superior performance on a multi-center prostate ultrasound dataset, achieving an AUROC of 77.1\% and a balanced accuracy of 83.8\%, surpassing current benchmarks. These findings underscore Cinepro's promise in advancing foundation models for weakly labeled ultrasound data.
 
 ### Hyperparameter tuning
 ##### Learning rate, optimizer, batch size
@@ -14,7 +19,7 @@ One of the central aspects of the work is the design of a tailored loss function
 
 One of the earlier loss functions we tried is $\mathcal{L}_\text{OBP}$, which is the same as masked cross-entropy, but with an added term aiming to minimize the activations of the model outside the needle region. We found that this model yielded worse validation performance overall.
 
-We tried two other variations of an involvement-aware loss function, namely $\mathcal{L}_\text{iCE}$ and $\mathcal{L}_\text{iMAE}$. We found that $\mathcal{L}_\text{iCE}$ did not differ in validation performance when compared to $\mathcal{L}_\text{MaskCE}$, and $\mathcal{L}_\text{iMAE}$ was correlated with very poor performance, in some cases failing to exceed 60\% AUROC on the validation set.
+We tried two other variations of an involvement-aware loss function, namely $\mathcal{L}_ \text{iCE}$ and $\mathcal{L}_ \text{iMAE}$. We found that $\mathcal{L}_ \text{iCE}$ did not differ in validation performance when compared to $\mathcal{L}_ \text{MaskCE}$, and $\mathcal{L}_ \text{iMAE}$ was correlated with very poor performance, in some cases failing to exceed 60\% AUROC on the validation set.
 
 ##### Augmentations
 We experimented with various types of data augmentations, including gaussian noise, speckle noise, salt and pepper noise, rotations, translations, deformations, and pixel and line cuts.
@@ -33,3 +38,12 @@ For Cinepro, we tried the following combinations of frames:
 * First frame as $X_w$, rand. subsequent frame each time for $X_s$
 * Last frame as $X_w$, rand. previous frame each time for $X_s$
 * Random frame each time for both $X_w$ and $X_s$
+
+### Computational Efficiency
+| Method |  Architecture   | Params. | Inference Time  (s)   | GPU Memory Req. (GB) |
+|--------|-----|-----|----------------|--|
+| iLR     | InceptionTime| 7,168 | TBD  | TBD       |
+| UNet    | UNet   | 4,125       | 0.41 | 0.900 |
+| SAM     | ViT-B  | 93,729,252  | 1.11 | 11.02 |
+| MedSAM  | ViT-B  | 93,729,252  | 1.11 | 11.02 |
+| Cinepro | ViT-B  | 93,729,252  | 1.11 | 11.02 |
