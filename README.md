@@ -1,7 +1,7 @@
 # Cinepro: Robust Training of Foundation Models for Cancer Detection in Prostate Ultrasound Cineloops
 ---
 
-[!cinepro](./img/cinepro_v3.png)
+![cinepro](cinepro_v3.png)
 
 ## Abstract
 Prostate cancer (PCa) detection using deep learning (DL) models has shown potential for enhancing real-time guidance during biopsies. However, prostate ultrasound images lack pixel-level cancer annotations, introducing label noise. Current approaches often focus on limited regions of interest (ROIs), disregarding anatomical context necessary for accurate diagnosis. Foundation models can overcome this limitation by analyzing entire images to capture global spatial relationships; however, they still encounter challenges stemming from the weak labels associated with coarse pathology annotations in ultrasound data. We introduce Cinepro, a novel framework that strengthens foundation models' ability to localize PCa in ultrasound cineloops. 
