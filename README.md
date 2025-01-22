@@ -40,10 +40,10 @@ For Cinepro, we tried the following combinations of frames:
 * Random frame each time for both $X_w$ and $X_s$
 
 ### Computational Efficiency
-| Method |  Architecture   | Params. | Inference Time  (s)   | GPU Memory Req. (GB) |
-|--------|-----|-----|----------------|--|
-| iLR     | InceptionTime| 7,168 | TBD  | TBD       |
-| UNet    | UNet   | 4,125       | 0.41 | 0.900 |
-| SAM     | ViT-B  | 93,729,252  | 1.11 | 11.02 |
-| MedSAM  | ViT-B  | 93,729,252  | 1.11 | 11.02 |
-| Cinepro | ViT-B  | 93,729,252  | 1.11 | 11.02 |
+| Method |  Architecture |Input Size | Params. | Inference Time  (s)   | GPU Memory Req. (GB) |
+|---------|--------------|--|--|----------------|--|
+| iLR     | InceptionTime| $16 \times 16$  | 7,168       | 0.03  | 1.779       |
+| UNet    | UNet         | $1024 \times 1024$  | 4,125       | 0.41 | 0.900 |
+| SAM     | ViT-B        | $1024 \times 1024$  | 93,729,252  | 1.11 | 11.02 |
+| MedSAM  | ViT-B        | $1024 \times 1024$  | 93,729,252  | 1.11 | 11.02 |
+| Cinepro | ViT-B        | $1024 \times 1024$  | 93,729,252  | 1.11 | 11.02 |
